@@ -6,8 +6,7 @@ from datetime import datetime
 
 # Telegram Bot config from GitHub secrets
 BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
-CHAT_IDS = os.getenv("TELEGRAM_CHAT_ID").split(",")
-
+CHAT_IDS = [cid.strip() for cid in os.getenv("TELEGRAM_CHAT_ID", "").split(",") if cid.strip()]
 
 # Fallback content from attachment (for testing if live fetch fails; paste full if needed)
 attachment_content = """
@@ -125,15 +124,14 @@ def send_telegram_message(message):
         return
     
     url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
-
-for chat_id in CHAT_IDS:
-        payload = {"chat_id": chat_id, "text": message}
+    
+    for chat_id in CHAT_IDS:
+        payload = {"chat_id": chat_id.strip(), "text": message}
         r = requests.post(url, json=payload)
         if r.status_code == 200:
-            print(f"✅ Gold price alert sent successfully to chat ID {chat_id}.")
+            print(f"✅ Gold price alert sent successfully to {chat_id}.")
         else:
             print(f"❌ Failed to send Telegram message to {chat_id}: {r.text}")
-
 def main():
     try:
         price = get_jaipur_24k_price()
