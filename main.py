@@ -170,7 +170,7 @@ def main():
         message = (
             "🏆 *Daily Gold Price Alert*\n\n"
             f"📅 *{today}*\n"
-            f"🏙️ *City:* Rajasthan (Rajasthan)\n\n"
+            f"🏙️ *Rajasthan*\n\n"
             f"💰 *24K Gold (10g):* ₹{price:,}\n\n"
             f"{trend_emoji} *Change:* {change}\n\n"
             "✨ _Stay shining and invest wisely!_"
