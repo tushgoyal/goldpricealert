@@ -28,4 +28,6 @@ jobs:
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          JSONBIN_URL: ${{ secrets.JSONBIN_URL }}
+          JSONBIN_KEY: ${{ secrets.JSONBIN_KEY }}
         run: python main.py
