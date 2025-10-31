@@ -6,7 +6,8 @@ from datetime import datetime
 
 # Telegram Bot config from GitHub secrets
 BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
-CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
+CHAT_IDS = os.getenv("TELEGRAM_CHAT_ID").split(",")
+
 
 # Fallback content from attachment (for testing if live fetch fails; paste full if needed)
 attachment_content = """
@@ -119,17 +120,19 @@ def get_jaipur_24k_price():
             raise Exception(f"Fallback failed: {fallback_e}")
 
 def send_telegram_message(message):
-    if not BOT_TOKEN or not CHAT_ID:
+    if not BOT_TOKEN or not CHAT_IDS:
         print("⚠️ Set TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID environment variables!")
         return
     
     url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
-    payload = {"chat_id": CHAT_ID, "text": message}
-    r = requests.post(url, json=payload)
-    if r.status_code == 200:
-        print("✅ Gold price alert sent successfully.")
-    else:
-        print(f"❌ Failed to send Telegram message: {r.text}")
+
+for chat_id in CHAT_IDS:
+        payload = {"chat_id": chat_id, "text": message}
+        r = requests.post(url, json=payload)
+        if r.status_code == 200:
+            print(f"✅ Gold price alert sent successfully to chat ID {chat_id}.")
+        else:
+            print(f"❌ Failed to send Telegram message to {chat_id}: {r.text}")
 
 def main():
     try:
