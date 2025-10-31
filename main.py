@@ -6,7 +6,12 @@ from datetime import datetime
 
 # Telegram Bot config from GitHub secrets
 BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
+# keep existing env-based fallback (comma-separated IDs)
 CHAT_IDS = [cid.strip() for cid in os.getenv("TELEGRAM_CHAT_ID", "").split(",") if cid.strip()]
+
+# JSONBin config (optional). If present, we'll fetch chat IDs from here
+JSONBIN_URL = os.getenv("JSONBIN_URL")   # e.g. https://api.jsonbin.io/v3/b/<bin_id>
+JSONBIN_KEY = os.getenv("JSONBIN_KEY")   # X-Master-Key
 
 # Fallback content from attachment (for testing if live fetch fails; paste full if needed)
 attachment_content = """
@@ -17,6 +22,31 @@ attachment_content = """
 |10 Gram|₹1,29,736.70 +137.80(0.11%)|₹1,29,598.90 +1,414.20(1.10%)|
 |12 Gram(1 Tola)|₹1,55,684.04 +165.36(0.11%)|₹1,55,518.68 +1,697.04(1.10%)|
 """
+
+def fetch_chat_ids_from_jsonbin():
+    """
+    If JSONBIN_URL and JSONBIN_KEY are configured, fetch chat IDs from JSONBin.
+    Returns a list of chat_id strings, or [] on failure.
+    """
+    if not JSONBIN_URL or not JSONBIN_KEY:
+        return []
+
+    try:
+        headers = {"X-Master-Key": JSONBIN_KEY}
+        resp = requests.get(JSONBIN_URL, headers=headers, timeout=10)
+        resp.raise_for_status()
+        data = resp.json()
+        # JSONBin v3 returns record field
+        record = data.get("record", data)
+        # support either "chat_ids" or "chatIds" (flexible)
+        ids = record.get("chat_ids") or record.get("chatIds") or []
+        # normalize to list of strings
+        normalized = [str(i).strip() for i in ids if i is not None]
+        print(f"Fetched {len(normalized)} chat IDs from JSONBin.")
+        return normalized
+    except Exception as e:
+        print(f"⚠️ Failed to fetch chat IDs from JSONBin: {e}")
+        return []
 
 def get_jaipur_24k_price():
     """Fetch 24K gold price for 10g in Jaipur/Rajasthan using Groww webpage parsing (replaces Tanishq API)"""
@@ -119,19 +149,24 @@ def get_jaipur_24k_price():
             raise Exception(f"Fallback failed: {fallback_e}")
 
 def send_telegram_message(message):
-    if not BOT_TOKEN or not CHAT_IDS:
-        print("⚠️ Set TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID environment variables!")
+    # If JSONBin is configured, fetch chat IDs from it at runtime and override CHAT_IDS
+    fetched_ids = fetch_chat_ids_from_jsonbin() if (JSONBIN_URL and JSONBIN_KEY) else []
+    active_chat_ids = fetched_ids if fetched_ids else CHAT_IDS
+
+    if not BOT_TOKEN or not active_chat_ids:
+        print("⚠️ Set TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID (or JSONBIN_URL/JSONBIN_KEY) environment variables!")
         return
     
     url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
     
-    for chat_id in CHAT_IDS:
+    for chat_id in active_chat_ids:
         payload = {"chat_id": chat_id.strip(), "text": message}
         r = requests.post(url, json=payload)
         if r.status_code == 200:
             print(f"✅ Gold price alert sent successfully to {chat_id}.")
         else:
             print(f"❌ Failed to send Telegram message to {chat_id}: {r.text}")
+
 def main():
     try:
         price = get_jaipur_24k_price()
