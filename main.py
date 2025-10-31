@@ -1,26 +1,19 @@
 import requests
 import os
 import re
-from bs4 import BeautifulSoup  # For HTML parsing
+from bs4 import BeautifulSoup
 from datetime import datetime
 
-# Telegram Bot config from GitHub secrets
 BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 # keep existing env-based fallback (comma-separated IDs)
 CHAT_IDS = [cid.strip() for cid in os.getenv("TELEGRAM_CHAT_ID", "").split(",") if cid.strip()]
 
-# JSONBin config (optional). If present, we'll fetch chat IDs from here
-JSONBIN_URL = os.getenv("JSONBIN_URL")   # e.g. https://api.jsonbin.io/v3/b/<bin_id>
-JSONBIN_KEY = os.getenv("JSONBIN_KEY")   # X-Master-Key
+JSONBIN_URL = os.getenv("JSONBIN_URL")
+JSONBIN_KEY = os.getenv("JSONBIN_KEY")
 
 # Fallback content from attachment (for testing if live fetch fails; paste full if needed)
 attachment_content = """
-|Gram|Today|Yesterday|
-|--|--|--|
-|1 Gram|₹12,973.67 +13.78(0.11%)|₹12,959.89 +141.42(1.10%)|
-|8 Gram|₹1,03,789.36 +110.24(0.11%)|₹1,03,679.12 +1,131.36(1.10%)|
-|10 Gram|₹1,29,736.70 +137.80(0.11%)|₹1,29,598.90 +1,414.20(1.10%)|
-|12 Gram(1 Tola)|₹1,55,684.04 +165.36(0.11%)|₹1,55,518.68 +1,697.04(1.10%)|
+No Price update today
 """
 
 def fetch_chat_ids_from_jsonbin():
@@ -36,11 +29,8 @@ def fetch_chat_ids_from_jsonbin():
         resp = requests.get(JSONBIN_URL, headers=headers, timeout=10)
         resp.raise_for_status()
         data = resp.json()
-        # JSONBin v3 returns record field
         record = data.get("record", data)
-        # support either "chat_ids" or "chatIds" (flexible)
         ids = record.get("chat_ids") or record.get("chatIds") or []
-        # normalize to list of strings
         normalized = [str(i).strip() for i in ids if i is not None]
         print(f"Fetched {len(normalized)} chat IDs from JSONBin.")
         return normalized
@@ -48,9 +38,9 @@ def fetch_chat_ids_from_jsonbin():
         print(f"⚠️ Failed to fetch chat IDs from JSONBin: {e}")
         return []
 
-def get_jaipur_24k_price():
-    """Fetch 24K gold price for 10g in Jaipur/Rajasthan using Groww webpage parsing (replaces Tanishq API)"""
-    url = "https://groww.in/gold-rates/gold-rate-today-in-rajasthan"  # Rajasthan includes Jaipur rates
+def get_rajasthan_24k_gold_price():
+    """Fetch 24K gold price for 10g in Rajasthan/Rajasthan using Groww webpage parsing"""
+    url = "https://groww.in/gold-rates/gold-rate-today-in-rajasthan"
     headers = {
         'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
         'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
@@ -78,11 +68,13 @@ def get_jaipur_24k_price():
             table_text = table.get_text()
             if "10 Gram" in table_text:
                 # Extract ₹ price from row
-                row_pattern = r'10\s*Gram.*?(₹[\d,]+\.?\d*)'
+                # row_pattern = r'10\s*Gram.*?(₹[\d,]+\.?\d*)'
+                row_pattern = r'10\s*Gram.*?(₹[\d,]+\.?\d*)\s*([+\-]?\d+\.?\d*\s*\([^)]*\))?'
                 match = re.search(row_pattern, table_text, re.IGNORECASE)
                 if match:
                     price_str = match.group(1)
-                    print(f"✅ Price found in table: {price_str}")
+                    change_str = match.group(2) or ""
+                    print(f"✅ Price found in table: {price_str}, Change: {change_str}")
                     break
         
         # Fallback: Search entire page text
@@ -126,8 +118,9 @@ def get_jaipur_24k_price():
         price_float = float(clean_price)
         price_int = int(round(price_float))
         
-        print(f"✅ Cleaned Jaipur 24K 10g Price: ₹{price_int:,}")
-        return price_int
+        print(f"✅ Cleaned Rajasthan 24K 10g Price: ₹{price_int:,}")
+        # print(f"✅ Cleaned Rajasthan 24K 10g Price Change difference: ₹{change_str.strip():,}")
+        return price_int, change_str.strip()
         
     except Exception as e:
         print(f"⚠️ Error in Groww fetch/parse: {e}")
@@ -144,7 +137,7 @@ def get_jaipur_24k_price():
                 print(f"✅ Fallback return: {price_int}")
                 return price_int
             else:
-                raise Exception("Jaipur 24K rate not found (fallback failed)")
+                raise Exception("Rajasthan 24K rate not found (fallback failed)")
         except Exception as fallback_e:
             raise Exception(f"Fallback failed: {fallback_e}")
 
@@ -160,7 +153,7 @@ def send_telegram_message(message):
     url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
     
     for chat_id in active_chat_ids:
-        payload = {"chat_id": chat_id.strip(), "text": message}
+        payload = {"chat_id": chat_id.strip(), "text": message, "parse_mode": "Markdown"}
         r = requests.post(url, json=payload)
         if r.status_code == 200:
             print(f"✅ Gold price alert sent successfully to {chat_id}.")
@@ -169,8 +162,19 @@ def send_telegram_message(message):
 
 def main():
     try:
-        price = get_jaipur_24k_price()
-        message = f"10g of 24k gold (99.9%) in Jaipur is ₹{price:,} Indian Rupee"
+        # price = get_rajasthan_24k_gold_price()
+        price, change = get_rajasthan_24k_gold_price()
+        today = datetime.now().strftime("%A, %d %B %Y")
+        trend_emoji = "📈" if "+" in change else ("📉" if "-" in change else "➖")
+
+        message = (
+            "🏆 *Daily Gold Price Alert*\n\n"
+            f"📅 *{today}*\n"
+            f"🏙️ *City:* Rajasthan (Rajasthan)\n\n"
+            f"💰 *24K Gold (10g):* ₹{price:,}\n\n"
+            f"{trend_emoji} *Change:* {change}\n\n"
+            "✨ _Stay shining and invest wisely!_"
+        )
         send_telegram_message(message)
         print("Final msg", message)
     except Exception as e:
