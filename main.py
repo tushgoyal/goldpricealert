@@ -54,7 +54,7 @@ def get_rajasthan_24k_gold_price():
         print(f"Groww Status Code: {r.status_code}")
         
         if r.status_code != 200:
-            raise Exception(f"Failed to fetch Groww rates: {r.status_code}")
+            raise Exception(f"Failed to fetch rates: {r.status_code}")
         
         # Parse HTML with BeautifulSoup
         soup = BeautifulSoup(r.text, 'html.parser')
@@ -137,7 +137,7 @@ def get_rajasthan_24k_gold_price():
                 print(f"✅ Fallback return: {price_int}")
                 return price_int
             else:
-                raise Exception("Rajasthan 24K rate not found (fallback failed)")
+                raise Exception("Rates are not available today")
         except Exception as fallback_e:
             raise Exception(f"Fallback failed: {fallback_e}")
 
